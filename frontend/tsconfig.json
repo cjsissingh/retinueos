@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "ES2022"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "incremental": true,
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "allowJs": true,
+    "noEmit": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": ["**/*.ts", "**/*.tsx", "next-env.d.ts", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+  // tools/oxlint/anti-slop is vendored oxlint plugin code that imports its
+  // own siblings with explicit .ts specifiers (oxlint's own JS-plugin
+  // runtime resolves those directly) -- not meant to go through this
+  // project's build, same as it's excluded from oxlint's own lint scope
+  // (see .oxlintrc.json's ignorePatterns).
+  "exclude": ["node_modules", "tools/oxlint/anti-slop"]
+}

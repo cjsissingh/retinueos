@@ -1,0 +1,22 @@
+# Dependencies and build output — never hand-formatted, no reason to check.
+**/node_modules
+backend/dist
+frontend/.next
+backend/tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+
+# drizzle-kit's own generated output (migrations + snapshots) — formatted by
+# drizzle-kit's own generator, not meant to be reformatted by hand; running
+# Prettier over it would just create churn against the next `db:generate`.
+backend/drizzle
+
+# Lockfiles are generated, not authored — formatting them is meaningless and
+# a genuine diff would just be noise on top of npm's own.
+package-lock.json
+
+# Vendored oxlint plugin (anti-slop) — kept as fetched from upstream so a
+# future re-sync diffs cleanly against it; not run through this repo's
+# formatter, same as it's excluded from lint (.oxlintrc.json) and typecheck
+# (tsconfig.json).
+frontend/tools/oxlint/anti-slop
+backend/tools/oxlint/anti-slop

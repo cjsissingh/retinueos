@@ -1,0 +1,142 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to a PR makes the previous run's checks moot -- cancel it
+# instead of letting both burn runner time. Never cancel a push-to-main run
+# (there's nothing superseding it to cancel in favor of).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    # Skips the backend/frontend jobs on a PR that doesn't touch that
+    # package -- most PRs here only touch one side. Only gates
+    # pull_request: a push to main always runs both, since that's the
+    # cheap, low-frequency safety net and there's no PR/base-sha to diff
+    # against for a push.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    # This repo's default GITHUB_TOKEN only carries contents/metadata/packages:
+    # read -- the pulls/files API call below 403s without this explicit grant.
+    permissions:
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      # The PR's file list via the API, not a full-history checkout + git
+      # diff -- this job sits ahead of backend/frontend on a PR that isn't
+      # skipped (the common case), so keeping it cheap matters for every PR,
+      # not just the ones it skips something for.
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          changed=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --jq '.[].filename')
+          echo "$changed"
+          # Shared root config, the Compose deployment contract, and this
+          # workflow file count as changes to both packages. The backend job
+          # also runs the tracked Compose config test below.
+          shared='^(\.github/workflows/ci\.yml|\.prettierrc\.json|\.prettierignore|docker-compose\.yml|scripts/docker-compose-config\.test\.sh)$'
+          if echo "$changed" | grep -qE "^backend/|$shared"; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$changed" | grep -qE "^frontend/|$shared"; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  backend:
+    needs: changes
+    # !cancelled(), not always(): always() would still start this job after
+    # a concurrency cancellation (see the group above) instead of letting
+    # the cancel take effect.
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.backend == 'true')"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: retinueos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # LOCAL_TEST_DATABASE_URL points tests/setup/global-setup.ts at this
+      # job's postgres service instead of testcontainers spinning up its own
+      # -- simpler and faster than Docker-in-Docker on a hosted runner, and
+      # the same escape hatch already documented there for environments
+      # without a usable Docker daemon.
+      LOCAL_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/retinueos_test
+      AUTH_PASSWORD: test-password
+      # Not a real secret -- fixed, throwaway, CI-only. A real deployment
+      # generates its own via `openssl rand -base64 32` (see .env.example).
+      # Deterministic 32-byte zero fixture. CI data is disposable and this is not a deployable secret.
+      CREDENTIALS_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # 24, not 20: the frontend's oxlint config loads a jsPlugin
+          # straight from a .ts file (tools/oxlint/anti-slop/index.ts) --
+          # Node needs native TypeScript support to import that without a
+          # build step, which Node 20 doesn't have ("Unknown file extension
+          # .ts") and Node 24 does, unflagged.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Verify Docker Compose config
+        working-directory: .
+        run: bash scripts/docker-compose-config.test.sh
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run knip
+      - run: npm test
+
+  frontend:
+    needs: changes
+    if: "!cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true')"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # 24, not 20: the frontend's oxlint config loads a jsPlugin
+          # straight from a .ts file (tools/oxlint/anti-slop/index.ts) --
+          # Node needs native TypeScript support to import that without a
+          # build step, which Node 20 doesn't have ("Unknown file extension
+          # .ts") and Node 24 does, unflagged.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run knip
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_BACKEND_URL: http://localhost:8080

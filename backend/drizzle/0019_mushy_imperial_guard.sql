@@ -1,0 +1,1 @@
+ALTER TABLE "notifications" ADD COLUMN "waiting_approval" boolean DEFAULT false NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE "routines" ADD COLUMN "kind" text DEFAULT 'job' NOT NULL;

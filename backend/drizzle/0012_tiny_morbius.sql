@@ -1,0 +1,1 @@
+ALTER TABLE "routines" ADD COLUMN "enabled" boolean DEFAULT true NOT NULL;

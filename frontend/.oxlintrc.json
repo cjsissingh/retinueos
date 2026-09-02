@@ -1,0 +1,75 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "react", "nextjs", "promise"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  // Vendored from https://github.com/dmmulroy/anti-slop (see
+  // tools/oxlint/anti-slop/README.md) -- rules that flag AI-slop TypeScript
+  // patterns: assertions that launder unknown/any back into a narrow type
+  // without evidence, unknown/any/object dictionary values, module mocking
+  // in place of real dependency seams, Reflect.get/apply in place of typed
+  // access, and similar.
+  "jsPlugins": [{ "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }],
+  "ignorePatterns": ["tools/oxlint/anti-slop/**"],
+  "rules": {
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-known-value-widening": "error",
+    "anti-slop/no-module-mocking": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-reflect-get": "error",
+    // Nearly every hit here is `typeof window === "undefined"`-style SSR/
+    // boundary narrowing (lib/auth.ts) or decode-at-render-time checks on
+    // dynamic SSE event payloads (app/logs/[jobId]/page.tsx) -- not the
+    // "guessed at an unparsed shape" pattern the rule targets. Kept off in
+    // both configs for consistency.
+    "anti-slop/no-runtime-typeof": "off",
+    // "shape" is a real domain concept here (components/persona-avatar.tsx's
+    // PersonaShape: the geometric shape -- circle/square/diamond/pill/hex --
+    // an avatar renders as, derived from the persona's role), not the
+    // "shape of some data" naming this rule targets. Renaming it away from
+    // "shape" would make the code less honest, not more.
+    "anti-slop/no-shape-in-symbol-names": "off",
+    "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-unknown-returns": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    // Tool call arguments (lib/tool-renderers.tsx, app/logs/[jobId]/page.tsx)
+    // mirror the same genuinely dynamic per-tool JSON the backend's
+    // tool-calls table stores -- see backend/.oxlintrc.json's identical
+    // rationale. `Record<string, unknown>` is the honest type here.
+    "anti-slop/no-unsafe-dictionary-type": "off",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    // Next.js's App Router uses the automatic JSX runtime (see
+    // tsconfig.json's "jsx": "preserve", resolved by Next's own SWC
+    // transform) -- `React` never needs to be in scope for JSX here, unlike
+    // the classic runtime this rule assumes.
+    "react/react-in-jsx-scope": "off",
+    // Flags the "load on mount, setState with the result" pattern this app
+    // uses consistently on every page (see e.g. app/roster/page.tsx's
+    // `load` callback) -- a deliberate, working, and common pattern here,
+    // not a bug; treating it as an error would mean disabling it inline on
+    // nearly every page instead of once, for no behavioral upside.
+    "react/set-state-in-effect": "off",
+    // Same false-positive pattern as the backend config -- see
+    // app/logs/logs-content.tsx's SSE-subscription `.then()` for an example
+    // of an intentionally non-returning side-effect callback.
+    "promise/always-return": "off",
+    // `EventSource.onmessage = ...` (lib/api-client.ts's streamJob) is the
+    // standard, single-listener way to consume it; not worth switching to
+    // addEventListener for the multi-listener capability this never needs.
+    "unicorn/prefer-add-event-listener": "off",
+    // Correct advice (Array#sort mutates), but Array#toSorted is ES2023 and
+    // this project's lib target is ES2022 (tsconfig.json) -- enabling this
+    // would mean bumping the target as a side effect of a lint rule, which
+    // is a separate decision from setting up linting itself.
+    "unicorn/no-array-sort": "off"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true
+  }
+}
