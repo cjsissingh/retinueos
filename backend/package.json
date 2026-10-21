@@ -28,7 +28,7 @@
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.13",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.5",
-    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.3.0",
     "ai": "^7.0.87",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
